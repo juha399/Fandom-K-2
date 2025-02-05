@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import Header from '@/components/Header';
-import IdolCard from '@/components/IdolCard';
+import CheckedIdolCard from '@/pages/myPage/CheckedIdolCard';
 import nextIcon from '@/assets/icons/nextIcon.svg';
 import prevIcon from '@/assets/icons/prevIcon.svg';
+import { fetchIdols } from '@/apis/idolApi.js';
+import PrimaryButton from '@/components/PrimaryButton';
 
 const storageKey = 'favoriteIdols';
 
@@ -12,62 +13,64 @@ const MyPage = () => {
   const [selectedIdols, setSelectedIdols] = useState([]);
   const [favoriteIdols, setFavoriteIdols] = useState([]);
   const [currentPage, setCurrentPage] = useState(0);
-  const [isClicked, setIsClicked] = useState(false);
-
-  const idolsPerPage = 16; // 한 페이지당 아이돌 개수
+  const [itemsPerPage, setItemsPerPage] = useState(16);
+  const favoriteIdSet = new Set(favoriteIdols.map(Number)); // 숫자로 변환한 Set 생성
+  const favoriteIdolsArr = idols.filter((idol) => favoriteIdSet.has(idol.id));
 
   useEffect(() => {
-    const fetchIdols = async () => {
-      try {
-        const response = await axios.get(
-          'https://fandom-k-api.vercel.app/13-3/idols?pageSize=30'
-        );
-        setIdols(response.data.list);
-      } catch (error) {
-        console.error('아이돌 데이터를 불러오는 중 오류 발생:', error);
+    const updateItemsPerPage = () => {
+      const width = window.innerWidth;
+      if (width >= 1200) {
+        setItemsPerPage(16);
+      } else if (width >= 768) {
+        setItemsPerPage(8);
+      } else {
+        setItemsPerPage(6);
       }
     };
-    fetchIdols();
 
+    updateItemsPerPage();
+    window.addEventListener('resize', updateItemsPerPage);
+    return () => window.removeEventListener('resize', updateItemsPerPage);
+  }, []);
+
+  useEffect(() => {
+    const loadIdols = async () => {
+      const data = await fetchIdols(30);
+      setIdols(data);
+    };
+    loadIdols();
+  }, []);
+
+  useEffect(() => {
     const storedFavorites = localStorage.getItem(storageKey);
     if (storedFavorites) {
       setFavoriteIdols(storedFavorites.split(','));
     }
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem(storageKey, favoriteIdols.join(','));
-  }, [favoriteIdols]);
-
-  // 아이돌 클릭 핸들러
   const handleToggle = (idolId) => {
-    setSelectedIdols((prev) => [...prev, idolId]);
-    setIsClicked(true);
-  };
-
-  //  관심있는 아이돌 추가 핸들러
-  const handleAddFavorites = () => {
-    if (!isClicked) return;
-
-    setFavoriteIdols((prev) => {
-      const updatedFavorites = [...new Set([...prev, ...selectedIdols])]; // 중복 제거
-      return updatedFavorites;
+    setSelectedIdols((prev) => {
+      const index = prev.indexOf(idolId);
+      if (index !== -1) {
+        // 이미 선택된 경우, 해당 인덱스의 항목만 제거
+        return [...prev.slice(0, index), ...prev.slice(index + 1)];
+      } else {
+        // 선택되지 않은 경우, 배열에 추가
+        return [...prev, idolId];
+      }
     });
-
-    setSelectedIdols([]);
-    setIsClicked(false); // 추가 후 다시 초기화
   };
-
-  //  관심있는 아이돌 삭제 핸들러
-  const handleRemoveFavorite = (idolId) => {
-    setFavoriteIdols((prev) => prev.filter((id) => id !== idolId));
-  };
-
-  // 페이지 이동 핸들러
-  const nextPage = () => {
-    if ((currentPage + 1) * idolsPerPage < idols.length) {
-      setCurrentPage((prev) => prev + 1);
+  const handleAddToFavorites = () => {
+    if (selectedIdols.length === 0) return;
+    else {
+      setFavoriteIdols((prev) => {
+        const updatedFavorites = [...new Set([...prev, ...selectedIdols])];
+        localStorage.setItem(storageKey, updatedFavorites.join(','));
+        return updatedFavorites;
+      });
     }
+    setSelectedIdols([]);
   };
 
   const prevPage = () => {
@@ -76,101 +79,119 @@ const MyPage = () => {
     }
   };
 
+  const nextPage = () => {
+    if ((currentPage + 1) * itemsPerPage < idols.length) {
+      setCurrentPage((prev) => prev + 1);
+    }
+  };
+
   return (
-    <div className="w-full min-h-screen bg-[#02000E] flex flex-col items-center">
-      <Header />
+    <>
+      {/*스크롤시 배경 전체유지 */}
+      <style>
+        {`
+          html, body {
+            background-color: #02000E; /* 브라우저 전체 배경 */
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow-x: hidden; /* 가로 스크롤 방지 */
+          }
+        `}
+      </style>
+      <div className="w-full min-h-screen bg-[#02000E] flex flex-col items-center font-pretendard">
+        <Header />
 
-      <div className="w-full max-w-[1200px] flex flex-col items-center py-6 sm:py-10">
-        <h1 className="text-white text-[16px] sm:text-[20px] md:text-[24px] font-bold self-start">
-          내가 관심있는 아이돌
-        </h1>
+        {/* 관심있는 아이돌 섹션 */}
+        <div className="w-full max-w-[1200px] flex flex-col items-center py-6 sm:py-10">
+          <h1 className="text-white text-[16px] tablet:text-[20px] pc:text-[24px] font-bold self-start">
+            내가 관심있는 아이돌
+          </h1>
 
-        {/* 관심있는 아이돌 데이터 없을 때도 공간 유지 */}
-        <div className="w-full flex gap-4 mt-4 flex-wrap min-h-[150px]">
-          {favoriteIdols.length > 0 ? (
-            favoriteIdols.map((idolId) => {
-              const idol = idols.find((i) => i.id === idolId);
-              return (
-                idol && (
-                  <div
+          <div className="w-full overflow-x-auto scrollbar-thin scrollbar-thumb-steelGray">
+            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-3 mt-4 mx-auto min-h-[150px]">
+              {favoriteIdolsArr.map((idol) => {
+                return (
+                  <CheckedIdolCard
                     key={idol.id}
-                    className="w-[98px] h-[98px] border-[1px] border-gray-500 rounded-full overflow-hidden flex items-center justify-center bg-black"
-                  >
-                    <img
-                      src={idol?.profilePicture}
-                      alt={idol?.name}
-                      className="w-full h-full object-contain scale-[1.2]"
-                    />
-                  </div>
+                    idol={idol}
+                    isSelectable={false}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          {/*   회색 구분선 */}
+          <div className="relative w-full max-w-[1200px] mt-4 border-t border-gray-900" />
+
+          {/* 아이돌 추가하기 섹션 */}
+          <h2 className="text-white text-[16px] tablet:text-[20px] pc:text-[24px] font-bold self-start mt-6">
+            관심 있는 아이돌을 추가해보세요.
+          </h2>
+
+          {/*   버튼이 그리드 크기에 따라 자동으로 좌우 맞춤 */}
+          <div className="relative w-full max-w-[1200px] mt-[20px]">
+            {/* 이전 버튼 (반응형 위치 조정) */}
+            <button
+              onClick={prevPage}
+              disabled={currentPage === 0}
+              className="absolute left-[1%] md:left-[-6%] lg:left-[-4%] top-1/2 transform -translate-y-1/2
+                       w-[29px] h-[135px] rounded-[4px] 
+                       bg-[rgba(27,27,27,0.8)] 
+                       hover:bg-[rgba(27,27,27,1)] transition-all 
+                       flex items-center justify-center"
+            >
+              <img src={prevIcon} alt="Previous" className="w-4 h-4" />
+            </button>
+
+            {/*   아이돌 리스트 */}
+            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-3 mt-4 mx-auto min-h-[300px]">
+              {idols
+                .slice(
+                  currentPage * itemsPerPage,
+                  (currentPage + 1) * itemsPerPage
                 )
-              );
-            })
-          ) : (
-            <p className="text-gray-500 text-center w-full">
-              관심있는 아이돌을 추가해보세요.
-            </p>
-          )}
+                .map((idol) => (
+                  <CheckedIdolCard
+                    key={idol.id}
+                    idol={idol}
+                    isSelectable={true}
+                    isSelected={selectedIdols.includes(idol.id)}
+                    onClick={() => handleToggle(idol.id)}
+                  />
+                ))}
+            </div>
+
+            {/* 다음 버튼 (반응형 위치 조정) */}
+            <button
+              onClick={nextPage}
+              disabled={(currentPage + 1) * itemsPerPage >= idols.length}
+              className="absolute right-[1%] md:right-[-6%] lg:right-[-4%] top-1/2 transform -translate-y-1/2
+                       w-[29px] h-[135px] rounded-[4px] 
+                       bg-[rgba(27,27,27,0.8)] 
+                       hover:bg-[rgba(27,27,27,1)] transition-all 
+                       flex items-center justify-center"
+            >
+              <img src={nextIcon} alt="Next" className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/*   추가하기 버튼 중앙 정렬 */}
+          <div className="flex justify-center w-full">
+            <PrimaryButton
+              onClickFunc={handleAddToFavorites}
+              className={
+                'w-[255px] h-[48px] mt-10 text-white rounded-full font-pretendard font-bold text-[16px] hover:opacity-70 transition-all'
+              }
+            >
+              + 추가하기
+            </PrimaryButton>
+          </div>
         </div>
-
-        <div className="w-full h-[1px] bg-gray-600 my-6"></div>
-
-        <h2 className="text-white text-[16px] sm:text-[20px] md:text-[24px] font-bold self-start">
-          관심 있는 아이돌을 추가해보세요.
-        </h2>
-
-        <div className="relative w-full max-w-[1200px] flex justify-between items-center">
-          {/* 왼쪽 버튼 (1200px  바깥쪽) */}
-          <button
-            onClick={prevPage}
-            disabled={currentPage === 0}
-            className="absolute left-[-40px] top-1/2 transform -translate-y-1/2 
-                       w-[29px] h-[135px] bg-[#1B1B1B]/80 flex items-center justify-center 
-                       rounded-lg opacity-80 hover:opacity-100 transition-all z-10"
-          >
-            <img src={prevIcon} alt="Previous" className="w-4 h-4" />
-          </button>
-
-          {/* 오른쪽 버튼 (1200px   바깥쪽) */}
-          <button
-            onClick={nextPage}
-            disabled={(currentPage + 1) * idolsPerPage >= idols.length}
-            className="absolute right-[-40px] top-1/2 transform -translate-y-1/2 
-                       w-[29px] h-[135px] bg-[#1B1B1B]/80 flex items-center justify-center 
-                       rounded-lg opacity-80 hover:opacity-100 transition-all z-10"
-          >
-            <img src={nextIcon} alt="Next" className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* 아이돌 리스트 */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 gap-4 mt-4 mx-auto max-w-[1200px]">
-          {idols
-            .slice(currentPage * idolsPerPage, (currentPage + 1) * idolsPerPage)
-            .map((idol) => (
-              <div
-                key={idol.id}
-                className="w-[98px] h-[98px] border-[1px] border-gray-500 rounded-full overflow-hidden flex items-center justify-center bg-black"
-                onClick={() => handleToggle(idol.id)}
-              >
-                <img
-                  src={idol?.profilePicture}
-                  alt={idol?.name}
-                  className="w-full h-full object-contain scale-[1.2]"
-                />
-              </div>
-            ))}
-        </div>
-
-        <button
-          onClick={handleAddFavorites}
-          disabled={!isClicked}
-          className={`w-[255px] h-[50px] mt-6 text-white rounded-full text-lg font-bold bg-[#FE578F] hover:bg-[#e4567e] transition-all
-    ${!isClicked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-        >
-          + 추가하기
-        </button>
       </div>
-    </div>
+    </>
   );
 };
 
